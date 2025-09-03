@@ -1,54 +1,58 @@
-import type { Request, Response } from 'express';
-import { asyncHandler } from '../../utils/asyncHandler.js';
-import { z } from 'zod';
-import { createTask, listTasks, updateTask, deleteTask } from './task.service.js';
-import { TaskStatus, Priority } from '@prisma/client';
+import type { Request, Response } from "express";
+import { prisma } from "../../config/prisma.js";
+import { z } from "zod";
 
-export const create = asyncHandler(async (req: Request, res: Response) => {
-  const workspaceId = (req as any).workspaceId as string;
-  const dto = z.object({
-    title: z.string().min(2),
-    description: z.string().optional(),
-    projectId: z.string().optional(),
-    status: z.nativeEnum(TaskStatus).optional(),
-    priority: z.nativeEnum(Priority).optional(),
-    assigneeId: z.string().optional(),
-    dueDate: z.coerce.date().optional()
-  }).parse(req.body);
-
-  const task = await createTask({ workspaceId, ...dto });
-  res.status(201).json({ task });
+const listQuery = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(10),
+  sort: z.enum(["createdAt", "dueDate", "priority", "status", "title"]).default("createdAt"),
+  order: z.enum(["asc", "desc"]).default("desc"),
+  status: z.enum(["TODO", "IN_PROGRESS", "DONE"]).optional(),
+  priority: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
+  assigneeId: z.string().optional(),
+  projectId: z.string().optional(),
+  search: z.string().trim().optional(),
+  dueFrom: z.coerce.date().optional(),
+  dueTo: z.coerce.date().optional(),
 });
 
-export const list = asyncHandler(async (req: Request, res: Response) => {
-  const workspaceId = (req as any).workspaceId as string;
-  const filter = z.object({
-    status: z.nativeEnum(TaskStatus).optional(),
-    assigneeId: z.string().optional()
-  }).parse(req.query);
-  const tasks = await listTasks(workspaceId, filter);
-  res.json({ tasks });
-});
+export async function listTasks(req: Request, res: Response) {
+  const workspaceId = (req.headers["x-workspace-id"] as string) || "";
+  const q = listQuery.parse(req.query);
 
-export const update = asyncHandler(async (req: Request, res: Response) => {
-  const workspaceId = (req as any).workspaceId as string;
-  const taskId = z.string().min(5).parse(req.params.id);
-  const data = z.object({
-    title: z.string().min(2).optional(),
-    description: z.string().optional(),
-    status: z.nativeEnum(TaskStatus).optional(),
-    priority: z.nativeEnum(Priority).optional(),
-    assigneeId: z.string().optional(),
-    dueDate: z.coerce.date().optional()
-  }).parse(req.body);
+  const where: any = { workspaceId };
+  if (q.status) where.status = q.status;
+  if (q.priority) where.priority = q.priority;
+  if (q.assigneeId) where.assigneeId = q.assigneeId;
+  if (q.projectId) where.projectId = q.projectId;
+  if (q.search) {
+    where.OR = [
+      { title: { contains: q.search, mode: "insensitive" } },
+      { description: { contains: q.search, mode: "insensitive" } },
+    ];
+  }
+  if (q.dueFrom || q.dueTo) {
+    where.dueDate = {};
+    if (q.dueFrom) where.dueDate.gte = q.dueFrom;
+    if (q.dueTo) where.dueDate.lte = q.dueTo;
+  }
 
-  const task = await updateTask(taskId, workspaceId, data);
-  res.json({ task });
-});
+  const skip = (q.page - 1) * q.pageSize;
+  const [items, total] = await Promise.all([
+    prisma.task.findMany({
+      where,
+      orderBy: { [q.sort]: q.order },
+      skip,
+      take: q.pageSize,
+    }),
+    prisma.task.count({ where }),
+  ]);
 
-export const remove = asyncHandler(async (req: Request, res: Response) => {
-  const workspaceId = (req as any).workspaceId as string;
-  const taskId = z.string().min(5).parse(req.params.id);
-  await deleteTask(taskId, workspaceId);
-  res.status(204).send();
-});
+  return res.json({
+    items,
+    meta: { page: q.page, pageSize: q.pageSize, total, totalPages: Math.ceil(total / q.pageSize) },
+  });
+}
+
+// NOTE: اترك باقي الدوال (create/update/delete/get) كما كانت لديك.
+// لو هالملف كان فيه دوال أخرى عندك، انسخها أسفل هذا التعليق بلا تغيير.

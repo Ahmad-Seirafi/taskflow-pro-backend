@@ -1,52 +1,36 @@
-import { Router } from 'express';
-import { auth, requireWorkspace } from '../../middlewares/auth.js';
-import { create, list } from './project.controller.js';
+import { Router } from "express";
+import { authGuard, requireWorkspace } from "../../middlewares/auth.js";
+import * as ctrl from "./project.controller.js";
 
-const r = Router();
-
-/**
- * @openapi
- * /api/projects:
- *   post:
- *     tags: [Projects]
- *     summary: Create a project in current workspace
- *     security: [{ bearerAuth: [] }]
- *     parameters:
- *       - in: header
- *         name: x-workspace-id
- *         required: true
- *         schema: { type: string }
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [name]
- *             properties:
- *               name: { type: string, example: "Website Redesign" }
- *     responses:
- *       201:
- *         description: Project created
- */
-r.post('/', auth(true), requireWorkspace, create);
+const router = Router();
 
 /**
  * @openapi
  * /api/projects:
  *   get:
+ *     summary: List projects (paginated)
  *     tags: [Projects]
- *     summary: List projects in current workspace
- *     security: [{ bearerAuth: [] }]
  *     parameters:
- *       - in: header
- *         name: x-workspace-id
- *         required: true
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: pageSize
+ *         schema: { type: integer, default: 10 }
+ *       - in: query
+ *         name: sort
+ *         schema: { type: string, enum: [createdAt, updatedAt, name], default: createdAt }
+ *       - in: query
+ *         name: order
+ *         schema: { type: string, enum: [asc, desc], default: desc }
+ *       - in: query
+ *         name: search
  *         schema: { type: string }
+ *     security: [{ bearerAuth: [] }]
  *     responses:
- *       200:
- *         description: List of projects
+ *       200: { description: OK }
  */
-r.get('/', auth(true), requireWorkspace, list);
+router.get("/", authGuard, requireWorkspace, ctrl.listProjects);
 
-export default r;
+// NOTE: اترك بقية المسارات كما كانت لديك (POST/GET by id/PATCH/DELETE).
+export default router;
