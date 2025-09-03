@@ -1,0 +1,122 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  passwordHash  String
+  name          String
+
+  // الجهة المقابلة لعلاقة المالك:
+  ownedWorkspaces Workspace[]  @relation("OwnedWorkspaces")
+
+  memberships   Membership[]
+  tasksAssigned Task[]         @relation("TaskAssignee")
+  comments      Comment[]
+  refreshTokens RefreshToken[]
+  createdAt     DateTime       @default(now())
+}
+
+model Workspace {
+  id          String        @id @default(cuid())
+  name        String
+  ownerId     String
+
+  // سمّينا العلاقة وعرّفنا الحقول المرجعية
+  owner       User          @relation("OwnedWorkspaces", fields: [ownerId], references: [id])
+
+  memberships Membership[]
+  projects    Project[]
+  tasks       Task[]
+  createdAt   DateTime      @default(now())
+}
+
+model Membership {
+  id           String     @id @default(cuid())
+  userId       String
+  workspaceId  String
+  role         Role       @default(MEMBER)
+
+  user      User      @relation(fields: [userId], references: [id])
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@unique([userId, workspaceId])
+  @@index([workspaceId])
+}
+
+model Project {
+  id           String     @id @default(cuid())
+  name         String
+  workspaceId  String
+  workspace    Workspace  @relation(fields: [workspaceId], references: [id])
+  tasks        Task[]
+  createdAt    DateTime   @default(now())
+
+  @@index([workspaceId])
+}
+
+model Task {
+  id           String      @id @default(cuid())
+  title        String
+  description  String?
+  status       TaskStatus  @default(TODO)
+  priority     Priority    @default(MEDIUM)
+  dueDate      DateTime?
+
+  workspaceId  String
+  workspace    Workspace   @relation(fields: [workspaceId], references: [id])
+
+  projectId    String?
+  project      Project?    @relation(fields: [projectId], references: [id])
+
+  assigneeId   String?
+  assignee     User?       @relation("TaskAssignee", fields: [assigneeId], references: [id])
+
+  comments     Comment[]
+  createdAt    DateTime    @default(now())
+
+  @@index([workspaceId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  content   String
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id])
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  revoked   Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
