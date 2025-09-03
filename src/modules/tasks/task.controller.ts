@@ -1,58 +1,60 @@
 import type { Request, Response } from "express";
-import { prisma } from "../../config/prisma.js";
 import { z } from "zod";
+import { prisma } from "../../config/prisma.js";
 
-const listQuery = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(10),
-  sort: z.enum(["createdAt", "dueDate", "priority", "status", "title"]).default("createdAt"),
-  order: z.enum(["asc", "desc"]).default("desc"),
-  status: z.enum(["TODO", "IN_PROGRESS", "DONE"]).optional(),
-  priority: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
-  assigneeId: z.string().optional(),
-  projectId: z.string().optional(),
-  search: z.string().trim().optional(),
-  dueFrom: z.coerce.date().optional(),
-  dueTo: z.coerce.date().optional(),
+/**
+ * نجعل التحقق ألطف:
+ * - title: مطلوب
+ * - priority/status: قيم محددة
+ * - projectId: اختياري cuid
+ * - dueDate: نقبل أي قيمة ممكن تتحول Date (z.coerce.date) بدل .datetime الصارمة
+ */
+const createTaskSchema = z.object({
+  title: z.string().trim().min(1, "title is required").max(200),
+  description: z.string().trim().max(4000).optional(),
+  priority: z.enum(["LOW", "MEDIUM", "HIGH"]).default("MEDIUM"),
+  status: z.enum(["TODO", "IN_PROGRESS", "DONE"]).default("TODO"),
+  projectId: z.string().cuid().optional(),
+  dueDate: z.coerce.date().optional(), // 👈 أهم تغيير
 });
 
-export async function listTasks(req: Request, res: Response) {
+/** POST /api/tasks — إنشاء مهمة داخل Workspace (وربطها بمشروع اختياريًا) */
+export async function createTask(req: Request, res: Response) {
   const workspaceId = (req.headers["x-workspace-id"] as string) || "";
-  const q = listQuery.parse(req.query);
-
-  const where: any = { workspaceId };
-  if (q.status) where.status = q.status;
-  if (q.priority) where.priority = q.priority;
-  if (q.assigneeId) where.assigneeId = q.assigneeId;
-  if (q.projectId) where.projectId = q.projectId;
-  if (q.search) {
-    where.OR = [
-      { title: { contains: q.search, mode: "insensitive" } },
-      { description: { contains: q.search, mode: "insensitive" } },
-    ];
-  }
-  if (q.dueFrom || q.dueTo) {
-    where.dueDate = {};
-    if (q.dueFrom) where.dueDate.gte = q.dueFrom;
-    if (q.dueTo) where.dueDate.lte = q.dueTo;
+  if (!workspaceId) {
+    return res.status(400).json({ error: "x-workspace-id header is required" });
   }
 
-  const skip = (q.page - 1) * q.pageSize;
-  const [items, total] = await Promise.all([
-    prisma.task.findMany({
-      where,
-      orderBy: { [q.sort]: q.order },
-      skip,
-      take: q.pageSize,
-    }),
-    prisma.task.count({ where }),
-  ]);
+  const parsed = createTaskSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: "Validation error",
+      details: parsed.error.issues, // يرجّع لك السبب بدقة
+    });
+  }
 
-  return res.json({
-    items,
-    meta: { page: q.page, pageSize: q.pageSize, total, totalPages: Math.ceil(total / q.pageSize) },
+  // إن تم تمرير projectId نتحقق أنه ضمن نفس الـ workspace
+  if (parsed.data.projectId) {
+    const proj = await prisma.project.findFirst({
+      where: { id: parsed.data.projectId, workspaceId },
+      select: { id: true },
+    });
+    if (!proj) {
+      return res.status(400).json({ error: "Project not found in this workspace" });
+    }
+  }
+
+  const task = await prisma.task.create({
+    data: {
+      title: parsed.data.title,
+      description: parsed.data.description ?? null,
+      priority: parsed.data.priority,
+      status: parsed.data.status,
+      projectId: parsed.data.projectId ?? null,
+      dueDate: parsed.data.dueDate ?? null,
+      workspaceId,
+    },
   });
-}
 
-// NOTE: اترك باقي الدوال (create/update/delete/get) كما كانت لديك.
-// لو هالملف كان فيه دوال أخرى عندك، انسخها أسفل هذا التعليق بلا تغيير.
+  return res.status(201).json(task);
+}

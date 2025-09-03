@@ -4,8 +4,8 @@ import helmet from "helmet";
 import swaggerUi from "swagger-ui-express";
 import pinoHttp from "pino-http";
 import { v4 as uuidv4 } from "uuid";
-
 import { swaggerSpec } from "./docs/swagger.js";
+
 import { errorHandler } from "./middlewares/errorHandler.js";
 import authRoutes from "./modules/auth/auth.routes.js";
 import workspaceRoutes from "./modules/workspaces/workspace.routes.js";
@@ -24,12 +24,14 @@ export function createApp() {
   app.use(cors(corsOptions));
   app.use(express.json({ limit: "1mb" }));
 
-  app.use(
-    pinoHttp({
-      logger,
-      genReqId: (req, res) => (req.headers["x-request-id"] as string) || uuidv4(),
-    })
-  );
+  // بعض نسخ/تعريفات pino-http مع ESM/TS بتتعرّف كـ "module" بدون call signatures
+  // لذلك نعمل casting آمن قبل النداء ونعطي types بسيطة للـ req/res
+  const httpLogger = (pinoHttp as unknown as (opts?: any) => any)({
+    logger,
+    genReqId: (req: any, _res: any) =>
+      (req.headers?.["x-request-id"] as string) || uuidv4(),
+  });
+  app.use(httpLogger);
 
   app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
   app.get("/health", (_req, res) => res.json({ ok: true }));
@@ -45,3 +47,7 @@ export function createApp() {
   app.use(errorHandler);
   return app;
 }
+
+// في آخر src/app.ts
+const app = createApp();
+export default app;

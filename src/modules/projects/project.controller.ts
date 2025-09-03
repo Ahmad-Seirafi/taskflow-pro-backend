@@ -1,37 +1,31 @@
 import type { Request, Response } from "express";
-import { prisma } from "../../config/prisma.js";
 import { z } from "zod";
+import { prisma } from "../../config/prisma.js";
 
-const listQuery = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(10),
-  sort: z.enum(["createdAt", "updatedAt", "name"]).default("createdAt"),
-  order: z.enum(["asc", "desc"]).default("desc"),
-  search: z.string().trim().optional(),
+const createProjectSchema = z.object({
+  name: z.string().trim().min(1, "name is required").max(120),
+  description: z.string().trim().max(1000).optional(),
 });
 
-export async function listProjects(req: Request, res: Response) {
+/** POST /api/projects — إنشاء مشروع داخل Workspace */
+export async function createProject(req: Request, res: Response) {
   const workspaceId = (req.headers["x-workspace-id"] as string) || "";
-  const q = listQuery.parse(req.query);
+  if (!workspaceId) {
+    return res.status(400).json({ error: "x-workspace-id header is required" });
+  }
 
-  const where: any = { workspaceId };
-  if (q.search) where.name = { contains: q.search, mode: "insensitive" };
+  const parsed = createProjectSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Validation error", details: parsed.error.issues });
+  }
 
-  const skip = (q.page - 1) * q.pageSize;
-  const [items, total] = await Promise.all([
-    prisma.project.findMany({
-      where,
-      orderBy: { [q.sort]: q.order },
-      skip,
-      take: q.pageSize,
-    }),
-    prisma.project.count({ where }),
-  ]);
-
-  return res.json({
-    items,
-    meta: { page: q.page, pageSize: q.pageSize, total, totalPages: Math.ceil(total / q.pageSize) },
+  const project = await prisma.project.create({
+    data: {
+      name: parsed.data.name,
+      workspaceId,
+      description: parsed.data.description ?? null, // صار العمود موجود في DB
+    },
   });
-}
 
-// NOTE: اترك بقية الدوال كما كانت لديك.
+  return res.status(201).json(project);
+}

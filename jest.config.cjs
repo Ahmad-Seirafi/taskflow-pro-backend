@@ -1,20 +1,24 @@
-/** Jest + TS + ESM (NodeNext) */
+/** @type {import('jest').Config} */
 module.exports = {
-  preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'node',
-  transform: {
-    '^.+\\.(ts|tsx)$': [
-      'ts-jest',
-      { useESM: true, tsconfig: './tsconfig.jest.json' }
-    ]
-  },
-  moduleFileExtensions: ['ts', 'js'],
-  extensionsToTreatAsEsm: ['.ts'],
-  moduleNameMapper: {
-    // يحل imports المنتهية بـ .js إلى نفس المسار بدون الامتداد (لملفات TS)
-    '^(\\.{1,2}/.*)\\.js$': '$1'
-  },
   testMatch: ['**/tests/**/*.test.ts'],
-  clearMocks: true,
-  verbose: true
+  transform: {
+    '^.+\\.ts$': [
+      'ts-jest',
+      {
+        tsconfig: {
+          module: 'commonjs',
+          target: 'ES2020',
+          esModuleInterop: true,
+          allowSyntheticDefaultImports: true,
+          resolveJsonModule: true,
+        },
+      },
+    ],
+  },
+  moduleNameMapper: {
+    '^(\\.{1,2}/.*)\\.js$': '$1',
+  },
+  moduleFileExtensions: ['ts', 'js', 'json'],
+  testPathIgnorePatterns: ['/node_modules/', '/dist/'],
 };

@@ -68,15 +68,17 @@ model Membership {
 }
 
 model Project {
-  id           String     @id @default(cuid())
-  name         String
-  workspaceId  String
-  workspace    Workspace  @relation(fields: [workspaceId], references: [id])
-  tasks        Task[]
-  createdAt    DateTime   @default(now())
-
-  @@index([workspaceId])
+  id          String   @id @default(cuid())
+  name        String
+  description String?              // <— العمود الجديد (اختياري)
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tasks       Task[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt @default(now()) // <— مهم: default(now())
 }
+
+
 
 model Task {
   id           String      @id @default(cuid())
