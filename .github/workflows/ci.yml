@@ -25,7 +25,6 @@ jobs:
           --health-timeout=5s
           --health-retries=5
 
-    # 👇 متغيرات البيئة المطلوبة من env.ts أثناء التحميل
     env:
       NODE_ENV: test
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/taskflow?schema=public
@@ -33,15 +32,12 @@ jobs:
       JWT_REFRESH_SECRET: test_refresh_secret
       ACCESS_TOKEN_EXPIRES_IN: 15m
       REFRESH_TOKEN_EXPIRES_IN: 7d
-      # حسب كودك إذا كان يتحقق من CORS:
       CORS_ORIGINS: http://localhost:3000
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
@@ -55,15 +51,15 @@ jobs:
       - name: Wait for Postgres
         run: |
           until pg_isready -h localhost -p 5432 -U postgres; do
-            echo "waiting for postgres...";
-            sleep 1;
+            echo "waiting for postgres..."; sleep 1;
           done
 
-      - name: Run migrations (deploy)
+      - name: Migrate (deploy)
         run: npx prisma migrate deploy
 
-      - name: Seed (optional)
-        run: npm run prisma:seed || echo "no seed script, skip"
+      # 👇 هذه هي الإضافة المهمة
+      - name: Seed database
+        run: npx prisma db seed
 
-      - name: Test
+      - name: Run tests
         run: npm test
