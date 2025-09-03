@@ -24,11 +24,17 @@ jobs:
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
-      # لو بدك Redis لاحقاً:
-      # redis:
-      #   image: redis:7
-      #   ports:
-      #     - 6379:6379
+
+    # 👇 متغيرات البيئة المطلوبة من env.ts أثناء التحميل
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/taskflow?schema=public
+      JWT_ACCESS_SECRET: test_access_secret
+      JWT_REFRESH_SECRET: test_refresh_secret
+      ACCESS_TOKEN_EXPIRES_IN: 15m
+      REFRESH_TOKEN_EXPIRES_IN: 7d
+      # حسب كودك إذا كان يتحقق من CORS:
+      CORS_ORIGINS: http://localhost:3000
 
     steps:
       - name: Checkout
@@ -54,18 +60,10 @@ jobs:
           done
 
       - name: Run migrations (deploy)
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/taskflow?schema=public
         run: npx prisma migrate deploy
 
       - name: Seed (optional)
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/taskflow?schema=public
         run: npm run prisma:seed || echo "no seed script, skip"
 
       - name: Test
-        env:
-          NODE_ENV: test
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/taskflow?schema=public
-          JWT_SECRET: testsecret
         run: npm test
